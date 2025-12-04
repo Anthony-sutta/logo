@@ -1,0 +1,76 @@
+from PIL import Image
+import sys
+
+# === CONFIGURACIÓN ===
+IMAGE_PATH = 'uac.png'  # <--- PON AQUÍ EL NOMBRE DE TU IMAGEN
+OUTPUT_FILE = 'uac.asm'
+WIDTH = 128             # Ancho deseado en el Bitmap Display
+HEIGHT = 128            # Alto deseado
+
+def generar_codigo_riscv():
+    try:
+        # 1. Cargar y procesar imagen
+        img = Image.open(IMAGE_PATH)
+        img = img.resize((WIDTH, HEIGHT)) # Redimensionar
+        img = img.convert('RGB')          # Asegurar formato RGB
+        
+        pixels = list(img.getdata())
+        
+        with open(OUTPUT_FILE, 'w') as f:
+            # 2. Escribir Encabezado
+            f.write(".data\n")
+            f.write(f"# Datos de la imagen: {WIDTH}x{HEIGHT}\n")
+            f.write("pixel_data:\n")
+            
+            # 3. Convertir píxeles a Hexadecimal (0x00RRGGBB)
+            # Escribimos los datos en bloques para que sea legible
+            count = 0
+            line_data = []
+            
+            for r, g, b in pixels:
+                # Convertir a formato hexadecimal RISC-V (0x00RRGGBB)
+                hex_color = "0x00{:02x}{:02x}{:02x}".format(r, g, b)
+                line_data.append(hex_color)
+                
+                count += 1
+                # Escribir cada 8 píxeles en una línea de .word
+                if len(line_data) >= 8:
+                    f.write("    .word " + ", ".join(line_data) + "\n")
+                    line_data = []
+            
+            # Escribir los restantes si sobran
+            if line_data:
+                f.write("    .word " + ", ".join(line_data) + "\n")
+
+            f.write("\n.text\n")
+            f.write(".globl main\n\n")
+            f.write("main:\n")
+            f.write(f"    # Configuración: {WIDTH}x{HEIGHT} pixeles\n")
+            f.write("    li s0, 0x10010000       # Base Address del Bitmap Display\n")
+            f.write("    la s1, pixel_data       # Dirección de nuestros datos de imagen\n")
+            f.write(f"    li t0, {WIDTH * HEIGHT} # Total de píxeles a dibujar\n\n")
+            
+            f.write("render_loop:\n")
+            f.write("    beq t0, zero, end_prog  # Si contador es 0, terminar\n")
+            f.write("    lw t1, 0(s1)            # Cargar color desde el array data\n")
+            f.write("    sw t1, 0(s0)            # Pintar píxel en pantalla\n")
+            f.write("    \n")
+            f.write("    addi s0, s0, 4          # Siguiente píxel en pantalla\n")
+            f.write("    addi s1, s1, 4          # Siguiente color en data\n")
+            f.write("    addi t0, t0, -1         # Decrementar contador\n")
+            f.write("    j render_loop\n\n")
+            
+            f.write("end_prog:\n")
+            f.write("    li a7, 10\n")
+            f.write("    ecall\n")
+
+        print(f"¡Éxito! Archivo generado: {OUTPUT_FILE}")
+        print(f"Ahora abre {OUTPUT_FILE} en MARS/RARS.")
+        
+    except FileNotFoundError:
+        print(f"ERROR: No se encontró la imagen '{IMAGE_PATH}'")
+    except Exception as e:
+        print(f"Ocurrió un error: {e}")
+
+if __name__ == "__main__":
+    generar_codigo_riscv()
